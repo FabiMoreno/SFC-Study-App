@@ -38,6 +38,15 @@ Netlify: https://sfc-study-app.netlify.app
 - detailed review of missed questions
 - practice history saved to Supabase per learner
 
+### Dashboard
+- Personal and Ayelén vs Sam comparison views
+- average score, best score, attempts, and answer counts
+- recent-five average and score trend
+- category performance based on real Practice answers
+- most-missed questions
+- shared review opportunities only when both learners have enough data
+- explicit empty states instead of estimated or fabricated metrics
+
 ## Security model
 
 - The browser uses a Supabase publishable key only.
@@ -50,8 +59,8 @@ Netlify: https://sfc-study-app.netlify.app
 ## Planned next steps
 
 - expand the bank toward 100–150 original questions
-- build the personal and comparison Dashboard
 - add Mock Exam with a dedicated non-revealable question pool
+- refine Dashboard insights as more real history accumulates
 - optionally add lightweight PIN/Auth later
 
 ## Supabase entities
