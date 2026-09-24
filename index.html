@@ -45,7 +45,7 @@
         <div class="status-card">
           <span class="status-label">Current learner</span>
           <strong id="hero-user">Select a user</strong>
-          <span class="status-copy">Study progress is temporarily stored on this device. Supabase history comes next.</span>
+          <span class="status-copy" id="sync-status">Connecting to shared progress…</span>
         </div>
       </section>
 
@@ -62,22 +62,22 @@
       <div class="user-options">
         <button class="user-option" type="button" data-user="Ayelén">
           <span class="profile-avatar">A</span>
-          <span><strong>Ayelén</strong><small>Continue study session</small></span>
+          <span><strong>Ayelén</strong><small>Load synced progress</small></span>
           <span class="arrow" aria-hidden="true">→</span>
         </button>
 
         <button class="user-option" type="button" data-user="Sam">
           <span class="profile-avatar">S</span>
-          <span><strong>Sam</strong><small>Continue study session</small></span>
+          <span><strong>Sam</strong><small>Load synced progress</small></span>
           <span class="arrow" aria-hidden="true">→</span>
         </button>
       </div>
 
-      <p class="modal-note">No password is required for the MVP.</p>
+      <p class="modal-note">Connecting to study data…</p>
     </div>
   </div>
 
-  <script src="questions.js"></script>
+  <script src="supabase.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

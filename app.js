@@ -27,22 +27,34 @@ const currentUserButton = document.querySelector("#current-user");
 const userName = document.querySelector("#user-name");
 const userAvatar = document.querySelector("#user-avatar");
 const heroUser = document.querySelector("#hero-user");
+const syncStatus = document.querySelector("#sync-status");
 const viewTitle = document.querySelector("#view-title");
 const viewDescription = document.querySelector("#view-description");
 const workspace = document.querySelector("#workspace");
 const navLinks = document.querySelectorAll(".nav-link");
 const userOptions = document.querySelectorAll(".user-option");
+const modalNote = document.querySelector(".modal-note");
 
+let profiles = [];
+let QUESTION_BANK = [];
 let selectedUser = null;
 let activeView = "study";
+let backendReady = false;
 
-let filteredQuestions = [...QUESTION_BANK];
+let studyReviews = [];
+let practiceHistory = [];
+
+let filteredQuestions = [];
 let currentQuestionIndex = 0;
 let selectedAnswer = null;
 let answerRevealed = false;
 let currentCategory = "All topics";
 
 let practiceSession = null;
+
+function currentProfile() {
+  return profiles.find((profile) => profile.name === selectedUser) || null;
+}
 
 function shuffleArray(items) {
   const copy = [...items];
@@ -55,62 +67,20 @@ function shuffleArray(items) {
   return copy;
 }
 
-function studyStorageKey() {
-  return `sfcStudyStats:${selectedUser || "guest"}`;
-}
-
-function practiceHistoryKey() {
-  return `sfcPracticeHistory:${selectedUser || "guest"}`;
-}
-
-function getStudyStats() {
-  const fallback = { correct: 0, incorrect: 0, answered: {} };
-
-  try {
-    return JSON.parse(localStorage.getItem(studyStorageKey())) || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveStudyResult(questionId, wasCorrect) {
-  if (!selectedUser) return;
-
-  const stats = getStudyStats();
-
-  if (!stats.answered[questionId]) {
-    stats.answered[questionId] = { correct: 0, incorrect: 0 };
-  }
-
-  if (wasCorrect) {
-    stats.correct += 1;
-    stats.answered[questionId].correct += 1;
-  } else {
-    stats.incorrect += 1;
-    stats.answered[questionId].incorrect += 1;
-  }
-
-  localStorage.setItem(studyStorageKey(), JSON.stringify(stats));
-}
-
-function getPracticeHistory() {
-  try {
-    return JSON.parse(localStorage.getItem(practiceHistoryKey())) || [];
-  } catch {
-    return [];
-  }
-}
-
-function savePracticeAttempt(attempt) {
-  if (!selectedUser) return;
-
-  const history = getPracticeHistory();
-  history.unshift(attempt);
-
-  localStorage.setItem(
-    practiceHistoryKey(),
-    JSON.stringify(history.slice(0, 50))
-  );
+function normalizeQuestion(row) {
+  return {
+    id: row.id,
+    category: row.topics?.category || "Other",
+    topic: row.topics?.topic || "General",
+    subtopic: row.topics?.subtopic || "",
+    question: row.question_text,
+    options: Array.isArray(row.options) ? row.options : [],
+    difficulty: row.difficulty,
+    sbok: row.sbok_reference || "",
+    studyEnabled: row.study_enabled,
+    practiceEnabled: row.practice_enabled,
+    mockEnabled: row.mock_enabled
+  };
 }
 
 function openUserModal() {
@@ -123,18 +93,40 @@ function closeUserModal() {
   document.body.style.overflow = "";
 }
 
-function selectUser(name) {
-  const profile = USERS[name];
+function setUserUi(name) {
+  const fallback = USERS[name] || { initial: name?.[0] || "?" };
+  userName.textContent = name || "Choose user";
+  userAvatar.textContent = fallback.initial;
+  heroUser.textContent = name || "Select a user";
+}
+
+async function loadLearnerData(profileId) {
+  const [reviews, attempts] = await Promise.all([
+    SFCBackend.getStudyReviews(profileId),
+    SFCBackend.getPracticeHistory(profileId, 10)
+  ]);
+
+  studyReviews = reviews || [];
+  practiceHistory = (attempts || []).map((attempt) => ({
+    ...attempt,
+    correct_answers: Number(attempt.correct_answers || 0),
+    percentage: Number(attempt.percentage || 0),
+    total_questions: Number(attempt.total_questions || 0),
+    duration_seconds: Number(attempt.duration_seconds || 0)
+  }));
+}
+
+async function selectUser(name) {
+  if (!backendReady) return;
+
+  const profile = profiles.find((item) => item.name === name);
   if (!profile) return;
 
   const userChanged = selectedUser && selectedUser !== name;
 
   selectedUser = name;
   sessionStorage.setItem("sfcCurrentUser", name);
-
-  userName.textContent = name;
-  userAvatar.textContent = profile.initial;
-  heroUser.textContent = name;
+  setUserUi(name);
 
   if (userChanged) {
     practiceSession = null;
@@ -142,7 +134,14 @@ function selectUser(name) {
   }
 
   closeUserModal();
-  renderCurrentView();
+  renderLoading("Loading your progress…");
+
+  try {
+    await loadLearnerData(profile.id);
+    renderCurrentView();
+  } catch (error) {
+    renderError(error);
+  }
 }
 
 function changeView(view) {
@@ -161,7 +160,38 @@ function changeView(view) {
   renderCurrentView();
 }
 
+function renderLoading(message = "Loading…") {
+  workspace.innerHTML = `
+    <div class="placeholder-card">
+      <span class="placeholder-icon">↻</span>
+      <div>
+        <span class="section-kicker">Syncing</span>
+        <h2>${message}</h2>
+        <p>Your study data is being loaded from the shared database.</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderError(error) {
+  workspace.innerHTML = `
+    <div class="placeholder-card sync-error">
+      <span class="placeholder-icon">!</span>
+      <div>
+        <span class="section-kicker">Connection issue</span>
+        <h2>We couldn't sync your study data.</h2>
+        <p>${error?.message || "Please refresh and try again."}</p>
+      </div>
+    </div>
+  `;
+}
+
 function renderCurrentView() {
+  if (!backendReady) {
+    renderLoading();
+    return;
+  }
+
   if (activeView === "study") {
     renderStudy();
     return;
@@ -177,8 +207,8 @@ function renderCurrentView() {
 
 function renderComingSoon(view) {
   const labels = {
-    mock: ["Mock Exam", "A 40-question, 60-minute simulation will be added after the question bank moves to Supabase."],
-    dashboard: ["Dashboard", "Historical analytics will be connected after the Supabase data model is ready."]
+    mock: ["Mock Exam", "A 40-question, 60-minute simulation will be added after the question bank is expanded."],
+    dashboard: ["Dashboard", "Your synced history is now being collected. The analytics view comes next."]
   };
 
   const [title, copy] = labels[view];
@@ -196,23 +226,57 @@ function renderComingSoon(view) {
 }
 
 function getCategories() {
-  return ["All topics", ...new Set(QUESTION_BANK.map((item) => item.category))];
+  return ["All topics", ...new Set(
+    QUESTION_BANK.filter((item) => item.studyEnabled).map((item) => item.category)
+  )];
+}
+
+function getStudyStats() {
+  const correct = studyReviews.filter((item) => item.was_correct).length;
+  const incorrect = studyReviews.length - correct;
+
+  return {
+    correct,
+    incorrect,
+    accuracy: studyReviews.length ? Math.round((correct / studyReviews.length) * 100) : 0
+  };
+}
+
+async function saveStudyResult(questionId, wasCorrect) {
+  const profile = currentProfile();
+  if (!profile) return;
+
+  const rows = await SFCBackend.saveStudyReview(profile.id, questionId, wasCorrect);
+  const saved = rows?.[0] || {
+    question_id: questionId,
+    was_correct: wasCorrect,
+    reviewed_at: new Date().toISOString()
+  };
+
+  studyReviews.unshift(saved);
 }
 
 function renderStudy() {
-  if (!filteredQuestions.length) filteredQuestions = [...QUESTION_BANK];
+  const studyQuestions = QUESTION_BANK.filter((item) => item.studyEnabled);
+
+  if (!filteredQuestions.length) {
+    filteredQuestions = [...studyQuestions];
+  }
 
   const question = filteredQuestions[currentQuestionIndex] || filteredQuestions[0];
+  if (!question) {
+    renderError(new Error("No study questions are available."));
+    return;
+  }
+
   const stats = getStudyStats();
-  const total = stats.correct + stats.incorrect;
-  const accuracy = total ? Math.round((stats.correct / total) * 100) : 0;
 
   workspace.innerHTML = `
     <div class="study-toolbar">
       <div>
         <span class="section-kicker">Study mode</span>
         <h2>Interactive flashcards</h2>
-        <p>Choose an answer, reveal the explanation, then mark whether you got it right.</p>
+        <p>Choose an answer, reveal the explanation, then record how you did.</p>
       </div>
 
       <div class="study-controls">
@@ -232,7 +296,7 @@ function renderStudy() {
     <div class="study-stats" aria-label="Study statistics">
       <div><strong>${stats.correct}</strong><span>Correct</span></div>
       <div><strong>${stats.incorrect}</strong><span>Incorrect</span></div>
-      <div><strong>${accuracy}%</strong><span>Accuracy</span></div>
+      <div><strong>${stats.accuracy}%</strong><span>Accuracy</span></div>
       <div><strong>${filteredQuestions.length}</strong><span>Cards</span></div>
     </div>
 
@@ -251,7 +315,7 @@ function renderStudy() {
 
       <h3 class="flashcard-question">${question.question}</h3>
 
-      <div class="answer-options" id="answer-options">
+      <div class="answer-options">
         ${question.options.map((option, index) => `
           <button class="answer-option" type="button" data-answer="${index}">
             <span class="answer-letter">${String.fromCharCode(65 + index)}</span>
@@ -264,8 +328,10 @@ function renderStudy() {
         <span class="answer-label">Correct answer</span>
         <strong id="correct-answer-text"></strong>
         <p id="answer-copy"></p>
-        <small id="answer-sbok"></small>
+        <small>${question.sbok}</small>
       </div>
+
+      <div class="inline-error" id="study-error" hidden></div>
 
       <div class="flashcard-actions">
         <button class="button button-ghost" id="previous-card" type="button" ${currentQuestionIndex === 0 ? "disabled" : ""}>← Previous</button>
@@ -280,13 +346,13 @@ function renderStudy() {
       </div>
     </article>
 
-    <p class="study-note">Study progress is temporarily stored on this device. Supabase will replace this local storage in a later milestone.</p>
+    <p class="study-note">Study progress is synced to your learner profile and will feed the Dashboard.</p>
   `;
 
-  bindStudyEvents(question);
+  bindStudyEvents(question, studyQuestions);
 }
 
-function bindStudyEvents(question) {
+function bindStudyEvents(question, studyQuestions) {
   const optionButtons = document.querySelectorAll(".answer-option");
   const revealButton = document.querySelector("#reveal-answer");
   const correctButton = document.querySelector("#mark-correct");
@@ -295,6 +361,7 @@ function bindStudyEvents(question) {
   const nextButton = document.querySelector("#next-card");
   const filter = document.querySelector("#category-filter");
   const shuffleButton = document.querySelector("#shuffle-study");
+  const errorBox = document.querySelector("#study-error");
 
   optionButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -306,44 +373,69 @@ function bindStudyEvents(question) {
     });
   });
 
-  revealButton.addEventListener("click", () => {
-    answerRevealed = true;
+  revealButton.addEventListener("click", async () => {
+    revealButton.disabled = true;
+    revealButton.textContent = "Loading…";
+    errorBox.hidden = true;
 
-    optionButtons.forEach((button) => {
-      const optionIndex = Number(button.dataset.answer);
+    try {
+      const feedback = await SFCBackend.getStudyFeedback(question.id);
 
-      if (optionIndex === question.correctAnswer) {
-        button.classList.add("correct");
+      if (!feedback) {
+        throw new Error("No feedback is available for this question.");
       }
 
-      if (selectedAnswer === optionIndex && optionIndex !== question.correctAnswer) {
-        button.classList.add("incorrect");
-      }
+      const correctAnswer = Number(feedback.correct_answer);
+      answerRevealed = true;
 
-      button.disabled = true;
-    });
+      optionButtons.forEach((button) => {
+        const optionIndex = Number(button.dataset.answer);
 
-    document.querySelector("#correct-answer-text").textContent =
-      `${String.fromCharCode(65 + question.correctAnswer)}. ${question.options[question.correctAnswer]}`;
+        if (optionIndex === correctAnswer) button.classList.add("correct");
+        if (selectedAnswer === optionIndex && optionIndex !== correctAnswer) {
+          button.classList.add("incorrect");
+        }
 
-    document.querySelector("#answer-copy").textContent = question.explanation;
-    document.querySelector("#answer-sbok").textContent = question.sbok;
-    document.querySelector("#answer-explanation").hidden = false;
+        button.disabled = true;
+      });
 
-    revealButton.hidden = true;
-    correctButton.hidden = false;
-    wrongButton.hidden = false;
+      document.querySelector("#correct-answer-text").textContent =
+        `${String.fromCharCode(65 + correctAnswer)}. ${question.options[correctAnswer]}`;
+
+      document.querySelector("#answer-copy").textContent = feedback.explanation;
+      document.querySelector("#answer-explanation").hidden = false;
+
+      revealButton.hidden = true;
+      correctButton.hidden = false;
+      wrongButton.hidden = false;
+    } catch (error) {
+      revealButton.disabled = false;
+      revealButton.textContent = "Reveal answer";
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+    }
   });
 
-  correctButton.addEventListener("click", () => {
-    saveStudyResult(question.id, true);
-    goToNextCard();
-  });
+  async function recordAndContinue(wasCorrect, button) {
+    correctButton.disabled = true;
+    wrongButton.disabled = true;
+    button.textContent = "Saving…";
 
-  wrongButton.addEventListener("click", () => {
-    saveStudyResult(question.id, false);
-    goToNextCard();
-  });
+    try {
+      await saveStudyResult(question.id, wasCorrect);
+      goToNextCard();
+    } catch (error) {
+      correctButton.disabled = false;
+      wrongButton.disabled = false;
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+      correctButton.textContent = "I got it right";
+      wrongButton.textContent = "I got it wrong";
+    }
+  }
+
+  correctButton.addEventListener("click", () => recordAndContinue(true, correctButton));
+  wrongButton.addEventListener("click", () => recordAndContinue(false, wrongButton));
 
   previousButton.addEventListener("click", () => {
     if (currentQuestionIndex > 0) {
@@ -359,8 +451,8 @@ function bindStudyEvents(question) {
     currentCategory = filter.value;
 
     filteredQuestions = currentCategory === "All topics"
-      ? [...QUESTION_BANK]
-      : QUESTION_BANK.filter((item) => item.category === currentCategory);
+      ? [...studyQuestions]
+      : studyQuestions.filter((item) => item.category === currentCategory);
 
     currentQuestionIndex = 0;
     resetCardState();
@@ -387,16 +479,17 @@ function goToNextCard() {
 }
 
 function startPractice(questionCount) {
-  const safeCount = Math.min(questionCount, QUESTION_BANK.length);
+  const pool = QUESTION_BANK.filter((item) => item.practiceEnabled);
+  const safeCount = Math.min(questionCount, pool.length);
 
   practiceSession = {
-    id: `practice-${Date.now()}`,
-    questions: shuffleArray(QUESTION_BANK).slice(0, safeCount),
+    questions: shuffleArray(pool).slice(0, safeCount),
     answers: {},
     currentIndex: 0,
-    startedAt: Date.now(),
+    attemptId: null,
     completed: false,
-    result: null
+    result: null,
+    error: null
   };
 
   renderPractice();
@@ -417,14 +510,14 @@ function renderPractice() {
 }
 
 function renderPracticeSetup() {
-  const recentAttempts = getPracticeHistory().slice(0, 3);
+  const recentAttempts = practiceHistory.slice(0, 3);
 
   workspace.innerHTML = `
     <div class="practice-intro">
       <div>
         <span class="section-kicker">Practice mode</span>
         <h2>Choose your session length</h2>
-        <p>Answers stay hidden until the end so the session feels closer to an exam. No timer yet.</p>
+        <p>Answers stay hidden until the end. Your result and history are synced to your learner profile.</p>
       </div>
 
       <div class="practice-size-grid">
@@ -448,7 +541,7 @@ function renderPracticeSetup() {
       <section class="recent-practice">
         <div class="section-heading">
           <div>
-            <span class="section-kicker">On this device</span>
+            <span class="section-kicker">Synced history</span>
             <h3>Recent practice sessions</h3>
           </div>
         </div>
@@ -458,11 +551,11 @@ function renderPracticeSetup() {
             <div class="recent-attempt-row">
               <div>
                 <strong>${attempt.percentage}%</strong>
-                <span>${attempt.correct}/${attempt.total} correct</span>
+                <span>${attempt.correct_answers}/${attempt.total_questions} correct</span>
               </div>
               <div>
-                <strong>${new Date(attempt.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</strong>
-                <span>${attempt.total}-question practice</span>
+                <strong>${new Date(attempt.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</strong>
+                <span>${attempt.total_questions}-question practice</span>
               </div>
             </div>
           `).join("")}
@@ -522,19 +615,17 @@ function renderPracticeQuestion() {
         `).join("")}
       </div>
 
+      ${session.error ? `<div class="inline-error">${session.error}</div>` : ""}
+
       <div class="practice-navigation">
         <button class="button button-ghost" id="practice-previous" type="button" ${session.currentIndex === 0 ? "disabled" : ""}>← Previous</button>
-
         <span class="practice-no-feedback">Answers are reviewed after submission.</span>
-
         <button
           class="button ${isLastQuestion ? "button-primary" : "button-secondary"}"
           id="${isLastQuestion ? "finish-practice" : "practice-next"}"
           type="button"
           ${currentSelection === undefined ? "disabled" : ""}
-        >
-          ${isLastQuestion ? "Finish practice" : "Next →"}
-        </button>
+        >${isLastQuestion ? "Finish practice" : "Next →"}</button>
       </div>
     </article>
 
@@ -557,11 +648,10 @@ function renderPracticeQuestion() {
 }
 
 function bindPracticeQuestionEvents(question) {
-  const answerButtons = document.querySelectorAll("[data-practice-answer]");
-
-  answerButtons.forEach((button) => {
+  document.querySelectorAll("[data-practice-answer]").forEach((button) => {
     button.addEventListener("click", () => {
       practiceSession.answers[question.id] = Number(button.dataset.practiceAnswer);
+      practiceSession.error = null;
       renderPracticeQuestion();
     });
   });
@@ -576,15 +666,7 @@ function bindPracticeQuestionEvents(question) {
     renderPracticeQuestion();
   });
 
-  document.querySelector("#finish-practice")?.addEventListener("click", () => {
-    const allAnswered = practiceSession.questions.every(
-      (item) => practiceSession.answers[item.id] !== undefined
-    );
-
-    if (!allAnswered) return;
-
-    finishPractice();
-  });
+  document.querySelector("#finish-practice")?.addEventListener("click", finishPractice);
 
   document.querySelectorAll("[data-practice-question]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -594,61 +676,109 @@ function bindPracticeQuestionEvents(question) {
   });
 }
 
-function finishPractice() {
+async function finishPractice() {
   const session = practiceSession;
-  const completedAt = new Date().toISOString();
+  const allAnswered = session.questions.every(
+    (item) => session.answers[item.id] !== undefined
+  );
 
-  const answerResults = session.questions.map((question) => {
-    const selected = session.answers[question.id];
+  if (!allAnswered) {
+    session.error = "Please answer every question before submitting.";
+    renderPracticeQuestion();
+    return;
+  }
 
-    return {
-      questionId: question.id,
-      selectedAnswer: selected,
-      correctAnswer: question.correctAnswer,
-      isCorrect: selected === question.correctAnswer,
-      category: question.category,
-      topic: question.topic
+  const finishButton = document.querySelector("#finish-practice");
+  if (finishButton) {
+    finishButton.disabled = true;
+    finishButton.textContent = "Submitting…";
+  }
+
+  session.error = null;
+
+  try {
+    const profile = currentProfile();
+    if (!profile) throw new Error("Learner profile not found.");
+
+    const questionIds = session.questions.map((item) => item.id);
+
+    if (!session.attemptId) {
+      const attempt = await SFCBackend.createPracticeAttempt(profile.id, questionIds);
+      if (!attempt?.id) throw new Error("Could not create the practice attempt.");
+      session.attemptId = attempt.id;
+    }
+
+    const answers = session.questions.map((item) => ({
+      questionId: item.id,
+      selectedAnswer: session.answers[item.id]
+    }));
+
+    try {
+      await SFCBackend.submitPracticeAnswers(session.attemptId, answers);
+    } catch (submitError) {
+      const existingAttempt = await SFCBackend.getAttempt(session.attemptId);
+      if (!existingAttempt?.completed_at) throw submitError;
+    }
+
+    const [savedAttempt, review] = await Promise.all([
+      SFCBackend.getAttempt(session.attemptId),
+      SFCBackend.getPracticeReview(session.attemptId)
+    ]);
+
+    if (!savedAttempt?.completed_at) {
+      throw new Error("The practice result has not finished processing.");
+    }
+
+    const result = {
+      id: savedAttempt.id,
+      total: Number(savedAttempt.total_questions),
+      correct: Number(savedAttempt.correct_answers),
+      incorrect: Number(savedAttempt.total_questions) - Number(savedAttempt.correct_answers),
+      percentage: Number(savedAttempt.percentage),
+      durationSeconds: Number(savedAttempt.duration_seconds || 0),
+      completedAt: savedAttempt.completed_at,
+      answers: (review || []).map((row) => ({
+        questionId: row.question_id,
+        selectedAnswer: Number(row.selected_answer),
+        correctAnswer: Number(row.correct_answer),
+        isCorrect: row.is_correct,
+        explanation: row.explanation
+      }))
     };
-  });
 
-  const correct = answerResults.filter((item) => item.isCorrect).length;
-  const total = session.questions.length;
-  const percentage = Math.round((correct / total) * 100);
-  const durationSeconds = Math.max(1, Math.round((Date.now() - session.startedAt) / 1000));
+    session.completed = true;
+    session.result = result;
 
-  const result = {
-    id: session.id,
-    mode: "practice",
-    user: selectedUser,
-    completedAt,
-    total,
-    correct,
-    incorrect: total - correct,
-    percentage,
-    durationSeconds,
-    answers: answerResults
-  };
+    practiceHistory.unshift({
+      id: result.id,
+      mode: "practice",
+      completed_at: result.completedAt,
+      total_questions: result.total,
+      correct_answers: result.correct,
+      percentage: result.percentage,
+      duration_seconds: result.durationSeconds
+    });
 
-  session.completed = true;
-  session.result = result;
-
-  savePracticeAttempt(result);
-  renderPracticeResults();
+    renderPracticeResults();
+  } catch (error) {
+    session.error = error.message;
+    renderPracticeQuestion();
+  }
 }
 
 function getCategoryBreakdown(result) {
   const breakdown = {};
 
   result.answers.forEach((answer) => {
-    if (!breakdown[answer.category]) {
-      breakdown[answer.category] = { correct: 0, total: 0 };
+    const question = QUESTION_BANK.find((item) => item.id === answer.questionId);
+    const category = question?.category || "Other";
+
+    if (!breakdown[category]) {
+      breakdown[category] = { correct: 0, total: 0 };
     }
 
-    breakdown[answer.category].total += 1;
-
-    if (answer.isCorrect) {
-      breakdown[answer.category].correct += 1;
-    }
+    breakdown[category].total += 1;
+    if (answer.isCorrect) breakdown[category].correct += 1;
   });
 
   return Object.entries(breakdown)
@@ -690,7 +820,7 @@ function renderPracticeResults() {
                 ? "Good foundation"
                 : "Keep reinforcing the weak areas"
           }</strong>
-          <span>Your study target is consistent scores of 85% or higher.</span>
+          <span>Your result has been saved to your learner profile.</span>
         </div>
       </div>
 
@@ -756,10 +886,10 @@ function renderPracticeResults() {
 
                   <div class="mistake-answer correct-line">
                     <span>Correct answer</span>
-                    <strong>${String.fromCharCode(65 + question.correctAnswer)}. ${question.options[question.correctAnswer]}</strong>
+                    <strong>${String.fromCharCode(65 + answer.correctAnswer)}. ${question.options[answer.correctAnswer]}</strong>
                   </div>
 
-                  <p>${question.explanation}</p>
+                  <p>${answer.explanation}</p>
                   <small>${question.sbok}</small>
                 </article>
               `;
@@ -791,6 +921,7 @@ function renderPracticeResults() {
 }
 
 userOptions.forEach((button) => {
+  button.disabled = true;
   button.addEventListener("click", () => selectUser(button.dataset.user));
 });
 
@@ -800,14 +931,44 @@ navLinks.forEach((button) => {
   button.addEventListener("click", () => changeView(button.dataset.view));
 });
 
-const sessionUser = sessionStorage.getItem("sfcCurrentUser");
+async function initializeApp() {
+  openUserModal();
+  renderLoading("Connecting to your study database…");
 
-if (sessionUser && USERS[sessionUser]) {
-  selectedUser = sessionUser;
-  userName.textContent = sessionUser;
-  userAvatar.textContent = USERS[sessionUser].initial;
-  heroUser.textContent = sessionUser;
+  try {
+    const [profileRows, questionRows] = await Promise.all([
+      SFCBackend.getProfiles(),
+      SFCBackend.getQuestions()
+    ]);
+
+    profiles = profileRows || [];
+    QUESTION_BANK = (questionRows || []).map(normalizeQuestion);
+    filteredQuestions = QUESTION_BANK.filter((item) => item.studyEnabled);
+
+    if (profiles.length !== 2 || !QUESTION_BANK.length) {
+      throw new Error("The study database is missing required profiles or questions.");
+    }
+
+    backendReady = true;
+    syncStatus.textContent = "Progress is synced across devices.";
+    modalNote.textContent = "Choose a learner to load synced progress.";
+
+    userOptions.forEach((button) => {
+      button.disabled = false;
+    });
+
+    const sessionUser = sessionStorage.getItem("sfcCurrentUser");
+    if (sessionUser && profiles.some((profile) => profile.name === sessionUser)) {
+      selectedUser = sessionUser;
+      setUserUi(sessionUser);
+    }
+
+    renderCurrentView();
+  } catch (error) {
+    syncStatus.textContent = "Sync unavailable.";
+    modalNote.textContent = error.message;
+    renderError(error);
+  }
 }
 
-renderCurrentView();
-openUserModal();
+initializeApp();

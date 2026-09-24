@@ -1032,3 +1032,29 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
     text-align: left;
   }
 }
+
+
+/* Synced backend states */
+.inline-error {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+  background: #fff1f2;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.inline-error[hidden] {
+  display: none;
+}
+
+.sync-error {
+  border-color: #fecaca;
+}
+
+.user-option:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
