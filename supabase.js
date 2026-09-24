@@ -116,5 +116,23 @@ window.SFCBackend = {
       method: "POST",
       body: { p_attempt_id: attemptId }
     });
+  },
+
+  async getDashboardAttempts() {
+    return supabaseRequest(
+      "exam_attempts?select=id,profile_id,mode,started_at,completed_at,total_questions,correct_answers,percentage,duration_seconds,question_ids&completed_at=not.is.null&order=completed_at.asc"
+    );
+  },
+
+  async getDashboardAnswers() {
+    return supabaseRequest(
+      "attempt_answers?select=attempt_id,question_id,selected_answer,is_correct,answered_at&order=answered_at.asc"
+    );
+  },
+
+  async getDashboardStudyReviews() {
+    return supabaseRequest(
+      "study_reviews?select=id,profile_id,question_id,was_correct,reviewed_at&order=reviewed_at.asc"
+    );
   }
 };
