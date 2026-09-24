@@ -1,6 +1,6 @@
 # SFC Study App
 
-A small web app for Ayelén and Sam to prepare for the SCRUMstudy Scrum Fundamentals Certified (SFC™) exam.
+A lightweight web app for Ayelén and Sam to prepare for the SCRUMstudy Scrum Fundamentals Certified (SFC™) exam.
 
 ## MVP
 
@@ -15,17 +15,27 @@ A small web app for Ayelén and Sam to prepare for the SCRUMstudy Scrum Fundamen
 - Ayelén vs Sam comparison
 - Supabase-backed question bank and attempt history
 
-## Planned stack
+## Stack
 
-- React
-- TypeScript
-- Vite
+- HTML
+- CSS
+- Vanilla JavaScript
 - Supabase
-- Vercel (deployment)
+- Netlify
+- GitHub
 
-## Data model
+## Initial structure
 
-The first version will use these main entities:
+```text
+index.html
+styles.css
+app.js
+supabase/
+assets/
+README.md
+```
+
+## Data model planned for Supabase
 
 - profiles
 - topics
@@ -33,4 +43,8 @@ The first version will use these main entities:
 - exam_attempts
 - attempt_answers
 
-No production credentials should be committed to this repository.
+## Deployment
+
+The app will be deployed as a static site on Netlify and connected to this GitHub repository for automatic deploys from `main`.
+
+No production credentials or private keys should be committed to this repository.
