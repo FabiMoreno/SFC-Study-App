@@ -118,6 +118,32 @@ window.SFCBackend = {
     });
   },
 
+  async startMockAttempt(profileId) {
+    return supabaseRequest("rpc/start_mock_attempt", {
+      method: "POST",
+      body: { p_profile_id: profileId }
+    });
+  },
+
+  async submitMockAnswers(attemptId, answers) {
+    await supabaseRequest("attempt_answers", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: answers.map((answer) => ({
+        attempt_id: attemptId,
+        question_id: answer.questionId,
+        selected_answer: answer.selectedAnswer
+      }))
+    });
+  },
+
+  async getMockReview(attemptId) {
+    return supabaseRequest("rpc/get_mock_review", {
+      method: "POST",
+      body: { p_attempt_id: attemptId }
+    });
+  },
+
   async getDashboardAttempts() {
     return supabaseRequest(
       "exam_attempts?select=id,profile_id,mode,started_at,completed_at,total_questions,correct_answers,percentage,duration_seconds,question_ids&completed_at=not.is.null&order=completed_at.asc"
