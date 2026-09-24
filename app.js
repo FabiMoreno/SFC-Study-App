@@ -52,6 +52,8 @@ let answerRevealed = false;
 let currentCategory = "All topics";
 
 let practiceSession = null;
+let mockSession = null;
+let mockTimerId = null;
 
 let dashboardMode = "personal";
 let dashboardData = null;
@@ -135,6 +137,8 @@ async function selectUser(name) {
 
   if (userChanged) {
     practiceSession = null;
+    mockSession = null;
+    stopMockTimer();
     resetCardState();
   }
 
@@ -152,6 +156,10 @@ async function selectUser(name) {
 function changeView(view) {
   const copy = viewCopy[view];
   if (!copy) return;
+
+  if (activeView === "mock" && view !== "mock") {
+    stopMockTimer();
+  }
 
   activeView = view;
 
@@ -207,6 +215,11 @@ function renderCurrentView() {
     return;
   }
 
+  if (activeView === "mock") {
+    renderMock();
+    return;
+  }
+
   if (activeView === "dashboard") {
     renderDashboard();
     return;
@@ -216,11 +229,9 @@ function renderCurrentView() {
 }
 
 function renderComingSoon(view) {
-  const labels = {
-    mock: ["Mock Exam", "A 40-question, 60-minute simulation will be added after the question bank is expanded."]
-  };
+  const labels = {};
 
-  const [title, copy] = labels[view];
+  const [title, copy] = labels[view] || ["Coming soon", "This section is still being prepared."];
 
   workspace.innerHTML = `
     <div class="placeholder-card">
@@ -932,6 +943,569 @@ function renderPracticeResults() {
 }
 
 
+
+function mockStorageKey(profileId) {
+  return `sfcActiveMock:${profileId}`;
+}
+
+function stopMockTimer() {
+  if (mockTimerId) {
+    window.clearInterval(mockTimerId);
+    mockTimerId = null;
+  }
+}
+
+function persistMockSession() {
+  const profile = currentProfile();
+  if (!profile || !mockSession || mockSession.completed) return;
+
+  const safeSession = {
+    attemptId: mockSession.attemptId,
+    startedAt: mockSession.startedAt,
+    durationSeconds: mockSession.durationSeconds,
+    passingCorrect: mockSession.passingCorrect,
+    questions: mockSession.questions,
+    answers: mockSession.answers,
+    currentIndex: mockSession.currentIndex
+  };
+
+  localStorage.setItem(mockStorageKey(profile.id), JSON.stringify(safeSession));
+}
+
+function clearStoredMockSession() {
+  const profile = currentProfile();
+  if (!profile) return;
+  localStorage.removeItem(mockStorageKey(profile.id));
+}
+
+function restoreMockSession() {
+  const profile = currentProfile();
+  if (!profile) return null;
+
+  try {
+    const raw = localStorage.getItem(mockStorageKey(profile.id));
+    if (!raw) return null;
+
+    const stored = JSON.parse(raw);
+    if (!stored?.attemptId || !Array.isArray(stored.questions) || stored.questions.length !== 40) {
+      localStorage.removeItem(mockStorageKey(profile.id));
+      return null;
+    }
+
+    return {
+      ...stored,
+      answers: stored.answers || {},
+      currentIndex: Number(stored.currentIndex || 0),
+      completed: false,
+      result: null,
+      submitting: false,
+      error: null
+    };
+  } catch {
+    localStorage.removeItem(mockStorageKey(profile.id));
+    return null;
+  }
+}
+
+function mockSecondsRemaining() {
+  if (!mockSession) return 0;
+
+  const deadline = new Date(mockSession.startedAt).getTime() + (mockSession.durationSeconds * 1000);
+  return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+}
+
+function formatMockTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
+}
+
+function updateMockTimerDisplay() {
+  if (!mockSession || mockSession.completed) return;
+
+  const timer = document.querySelector("#mock-timer");
+  const seconds = mockSecondsRemaining();
+
+  if (timer) {
+    timer.textContent = formatMockTime(seconds);
+    timer.classList.toggle("warning", seconds <= 300);
+  }
+
+  if (seconds <= 0 && !mockSession.submitting) {
+    stopMockTimer();
+    submitMockExam(true);
+  }
+}
+
+function startMockTimer() {
+  stopMockTimer();
+  updateMockTimerDisplay();
+
+  if (!mockSession || mockSession.completed || mockSession.submitting) return;
+
+  mockTimerId = window.setInterval(updateMockTimerDisplay, 1000);
+}
+
+async function startMockExam() {
+  const profile = currentProfile();
+  if (!profile) return;
+
+  workspace.innerHTML = `
+    <div class="dashboard-loading">
+      <span>↻</span>
+      <strong>Preparing your 40-question exam…</strong>
+    </div>
+  `;
+
+  try {
+    const rawPayload = await SFCBackend.startMockAttempt(profile.id);
+    const payload = Array.isArray(rawPayload) ? rawPayload[0] : rawPayload;
+
+    if (!payload?.attempt_id || !Array.isArray(payload.questions) || payload.questions.length !== 40) {
+      throw new Error("The Mock Exam could not be prepared.");
+    }
+
+    mockSession = {
+      attemptId: payload.attempt_id,
+      startedAt: payload.started_at,
+      durationSeconds: Number(payload.duration_seconds || 3600),
+      passingCorrect: Number(payload.passing_correct || 30),
+      questions: payload.questions.map((question) => ({
+        id: question.id,
+        question: question.question_text,
+        options: Array.isArray(question.options) ? question.options : [],
+        difficulty: question.difficulty,
+        category: question.category,
+        topic: question.topic,
+        subtopic: question.subtopic || ""
+      })),
+      answers: {},
+      currentIndex: 0,
+      completed: false,
+      result: null,
+      submitting: false,
+      error: null
+    };
+
+    persistMockSession();
+    renderMockQuestion();
+  } catch (error) {
+    renderError(error);
+  }
+}
+
+function renderMock() {
+  if (!mockSession) {
+    mockSession = restoreMockSession();
+  }
+
+  if (!mockSession) {
+    renderMockSetup();
+    return;
+  }
+
+  if (mockSession.completed) {
+    renderMockResults();
+    return;
+  }
+
+  renderMockQuestion();
+}
+
+function renderMockSetup() {
+  stopMockTimer();
+
+  workspace.innerHTML = `
+    <section class="mock-setup">
+      <div class="mock-setup-main">
+        <span class="section-kicker">Mock Exam</span>
+        <h2>Simulate the SFC™ exam</h2>
+        <p>This simulator uses original study questions and follows the current official SFC™ exam format.</p>
+
+        <div class="mock-rules">
+          <div><strong>40</strong><span>Questions</span></div>
+          <div><strong>60 min</strong><span>Time limit</span></div>
+          <div><strong>30 / 40</strong><span>Passing score</span></div>
+          <div><strong>No</strong><span>Negative marking</span></div>
+        </div>
+
+        <div class="mock-guidance">
+          <strong>Before you start</strong>
+          <span>The timer starts immediately. Answers are not revealed until you submit. Unanswered questions count as incorrect.</span>
+        </div>
+
+        <button class="button button-primary mock-start-button" id="start-mock" type="button">Start Mock Exam</button>
+      </div>
+
+      <aside class="mock-security-card">
+        <span class="section-kicker">Exam mode</span>
+        <h3>Separate question pool</h3>
+        <p>Mock-only questions are kept out of Study and Practice, and answer keys are unavailable until the exam is complete.</p>
+        <small>Internal difficulty mix: 10 Easy · 20 Medium · 10 Hard</small>
+      </aside>
+    </section>
+  `;
+
+  document.querySelector("#start-mock").addEventListener("click", startMockExam);
+}
+
+function renderMockQuestion() {
+  const session = mockSession;
+  const question = session.questions[session.currentIndex];
+  const selected = session.answers[question.id];
+  const answeredCount = Object.keys(session.answers).length;
+  const unansweredCount = session.questions.length - answeredCount;
+
+  workspace.innerHTML = `
+    <div class="mock-exam-header">
+      <div>
+        <span class="section-kicker">Mock Exam in progress</span>
+        <h2>Question ${session.currentIndex + 1} of 40</h2>
+      </div>
+
+      <div class="mock-live-stats">
+        <div><strong>${answeredCount}</strong><span>Answered</span></div>
+        <div><strong>${unansweredCount}</strong><span>Unanswered</span></div>
+        <div class="mock-timer-box">
+          <strong id="mock-timer">${formatMockTime(mockSecondsRemaining())}</strong>
+          <span>Time left</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="study-progress">
+      <div style="width:${((session.currentIndex + 1) / 40) * 100}%"></div>
+    </div>
+
+    <article class="flashcard mock-card">
+      <div class="flashcard-meta">
+        <div>
+          <span class="topic-pill">${question.category}</span>
+          <span class="topic-name">${question.topic}</span>
+        </div>
+        <span>${question.difficulty}</span>
+      </div>
+
+      <h3 class="flashcard-question">${question.question}</h3>
+
+      <div class="answer-options">
+        ${question.options.map((option, index) => `
+          <button
+            class="answer-option ${selected === index ? "selected" : ""}"
+            type="button"
+            data-mock-answer="${index}"
+            ${session.submitting ? "disabled" : ""}
+          >
+            <span class="answer-letter">${String.fromCharCode(65 + index)}</span>
+            <span>${option}</span>
+          </button>
+        `).join("")}
+      </div>
+
+      ${session.error ? `<div class="inline-error">${session.error}</div>` : ""}
+
+      <div class="mock-navigation">
+        <button class="button button-ghost" id="mock-previous" type="button" ${session.currentIndex === 0 || session.submitting ? "disabled" : ""}>← Previous</button>
+        <span class="practice-no-feedback">No answer feedback until submission.</span>
+        <button class="button button-secondary" id="mock-next" type="button" ${session.currentIndex === 39 || session.submitting ? "disabled" : ""}>Next →</button>
+      </div>
+    </article>
+
+    <div class="mock-question-grid" aria-label="Mock exam question navigation">
+      ${session.questions.map((item, index) => {
+        const isAnswered = Object.prototype.hasOwnProperty.call(session.answers, item.id);
+        return `
+          <button
+            class="practice-dot ${index === session.currentIndex ? "current" : ""} ${isAnswered ? "answered" : ""}"
+            type="button"
+            data-mock-question="${index}"
+            ${session.submitting ? "disabled" : ""}
+            aria-label="Go to question ${index + 1}"
+          >${index + 1}</button>
+        `;
+      }).join("")}
+    </div>
+
+    <div class="mock-submit-bar">
+      <div>
+        <strong>${answeredCount} of 40 answered</strong>
+        <span>You can submit before time expires. Blank answers are scored as incorrect.</span>
+      </div>
+      <button class="button button-primary" id="finish-mock" type="button" ${session.submitting ? "disabled" : ""}>
+        ${session.submitting ? "Submitting…" : "Finish Exam"}
+      </button>
+    </div>
+  `;
+
+  document.querySelectorAll("[data-mock-answer]").forEach((button) => {
+    button.addEventListener("click", () => {
+      session.answers[question.id] = Number(button.dataset.mockAnswer);
+      session.error = null;
+      persistMockSession();
+      renderMockQuestion();
+    });
+  });
+
+  document.querySelector("#mock-previous")?.addEventListener("click", () => {
+    session.currentIndex -= 1;
+    persistMockSession();
+    renderMockQuestion();
+  });
+
+  document.querySelector("#mock-next")?.addEventListener("click", () => {
+    session.currentIndex += 1;
+    persistMockSession();
+    renderMockQuestion();
+  });
+
+  document.querySelectorAll("[data-mock-question]").forEach((button) => {
+    button.addEventListener("click", () => {
+      session.currentIndex = Number(button.dataset.mockQuestion);
+      persistMockSession();
+      renderMockQuestion();
+    });
+  });
+
+  document.querySelector("#finish-mock")?.addEventListener("click", () => {
+    const remaining = 40 - Object.keys(session.answers).length;
+    const message = remaining
+      ? `You still have ${remaining} unanswered question${remaining === 1 ? "" : "s"}. Submit anyway?`
+      : "Submit your Mock Exam now?";
+
+    if (window.confirm(message)) {
+      submitMockExam(false);
+    }
+  });
+
+  startMockTimer();
+}
+
+async function submitMockExam(timedOut = false) {
+  if (!mockSession || mockSession.submitting || mockSession.completed) return;
+
+  stopMockTimer();
+  mockSession.submitting = true;
+  mockSession.error = null;
+
+  if (activeView === "mock") {
+    renderMockQuestion();
+  }
+
+  const answers = mockSession.questions.map((question) => ({
+    questionId: question.id,
+    selectedAnswer: Object.prototype.hasOwnProperty.call(mockSession.answers, question.id)
+      ? mockSession.answers[question.id]
+      : null
+  }));
+
+  try {
+    try {
+      await SFCBackend.submitMockAnswers(mockSession.attemptId, answers);
+    } catch (submitError) {
+      const existing = await SFCBackend.getAttempt(mockSession.attemptId);
+      if (!existing?.completed_at) throw submitError;
+    }
+
+    const [savedAttempt, review] = await Promise.all([
+      SFCBackend.getAttempt(mockSession.attemptId),
+      SFCBackend.getMockReview(mockSession.attemptId)
+    ]);
+
+    if (!savedAttempt?.completed_at || !Array.isArray(review) || review.length !== 40) {
+      throw new Error("The Mock Exam result has not finished processing.");
+    }
+
+    const correct = Number(savedAttempt.correct_answers || 0);
+    const total = Number(savedAttempt.total_questions || 40);
+
+    mockSession.result = {
+      id: savedAttempt.id,
+      correct,
+      incorrect: total - correct,
+      total,
+      percentage: Number(savedAttempt.percentage || 0),
+      durationSeconds: Number(savedAttempt.duration_seconds || 0),
+      completedAt: savedAttempt.completed_at,
+      passed: correct >= mockSession.passingCorrect,
+      passingCorrect: mockSession.passingCorrect,
+      timedOut,
+      answers: review.map((row) => ({
+        questionId: row.question_id,
+        selectedAnswer: row.selected_answer === null ? null : Number(row.selected_answer),
+        correctAnswer: Number(row.correct_answer),
+        isCorrect: row.is_correct,
+        explanation: row.explanation
+      }))
+    };
+
+    mockSession.completed = true;
+    mockSession.submitting = false;
+    clearStoredMockSession();
+    dashboardData = null;
+
+    renderMockResults();
+  } catch (error) {
+    mockSession.submitting = false;
+    mockSession.error = error.message;
+    persistMockSession();
+
+    if (activeView === "mock") {
+      renderMockQuestion();
+    }
+  }
+}
+
+function getMockCategoryBreakdown(result) {
+  const questionMap = new Map(mockSession.questions.map((question) => [question.id, question]));
+  const categories = {};
+
+  result.answers.forEach((answer) => {
+    const question = questionMap.get(answer.questionId);
+    if (!question) return;
+
+    if (!categories[question.category]) {
+      categories[question.category] = { correct: 0, total: 0 };
+    }
+
+    categories[question.category].total += 1;
+    if (answer.isCorrect) categories[question.category].correct += 1;
+  });
+
+  return Object.entries(categories)
+    .map(([category, values]) => ({
+      category,
+      ...values,
+      percentage: Math.round((values.correct / values.total) * 100)
+    }))
+    .sort((a, b) => a.percentage - b.percentage);
+}
+
+function renderMockResults() {
+  stopMockTimer();
+
+  const result = mockSession.result;
+  const questionMap = new Map(mockSession.questions.map((question) => [question.id, question]));
+  const breakdown = getMockCategoryBreakdown(result);
+  const missed = result.answers.filter((answer) => !answer.isCorrect);
+
+  workspace.innerHTML = `
+    <section class="mock-results">
+      <div class="result-hero mock-result-hero">
+        <div>
+          <span class="section-kicker">Mock Exam complete</span>
+          <h2>${result.correct}/40</h2>
+          <p>${Math.round(result.percentage)}% · ${formatDuration(result.durationSeconds)}${result.timedOut ? " · Time expired" : ""}</p>
+        </div>
+
+        <div class="mock-pass-card ${result.passed ? "passed" : "not-passed"}">
+          <span>${result.passed ? "PASS" : "NOT PASSED"}</span>
+          <strong>${result.passed ? "You reached the official passing threshold." : "You need 30 correct answers to reach the passing threshold."}</strong>
+          <small>Passing threshold: ${result.passingCorrect}/40 (75%)</small>
+        </div>
+      </div>
+
+      <div class="result-summary-grid">
+        <div><strong>${result.correct}</strong><span>Correct</span></div>
+        <div><strong>${result.incorrect}</strong><span>Incorrect / blank</span></div>
+        <div><strong>${Math.round(result.percentage)}%</strong><span>Score</span></div>
+        <div><strong>${formatDuration(result.durationSeconds)}</strong><span>Duration</span></div>
+      </div>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">Exam breakdown</span>
+            <h3>Performance by category</h3>
+          </div>
+        </div>
+
+        <div class="topic-breakdown">
+          ${breakdown.map((item) => `
+            <div class="topic-breakdown-row">
+              <div>
+                <strong>${item.category}</strong>
+                <span>${item.correct}/${item.total} correct</span>
+              </div>
+              <div class="topic-score">
+                <span>${item.percentage}%</span>
+                <div><i style="width:${item.percentage}%"></i></div>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">Review</span>
+            <h3>${missed.length ? "Incorrect and unanswered questions" : "Perfect score"}</h3>
+          </div>
+        </div>
+
+        ${missed.length ? `
+          <div class="mistake-list">
+            ${missed.map((answer) => {
+              const question = questionMap.get(answer.questionId);
+              const userAnswer = answer.selectedAnswer === null
+                ? "Unanswered"
+                : `${String.fromCharCode(65 + answer.selectedAnswer)}. ${question.options[answer.selectedAnswer]}`;
+
+              return `
+                <article class="mistake-card">
+                  <div class="flashcard-meta">
+                    <div>
+                      <span class="topic-pill">${question.category}</span>
+                      <span class="topic-name">${question.topic}</span>
+                    </div>
+                    <span>${question.difficulty}</span>
+                  </div>
+
+                  <h4>${question.question}</h4>
+
+                  <div class="mistake-answer wrong-line">
+                    <span>Your answer</span>
+                    <strong>${userAnswer}</strong>
+                  </div>
+
+                  <div class="mistake-answer correct-line">
+                    <span>Correct answer</span>
+                    <strong>${String.fromCharCode(65 + answer.correctAnswer)}. ${question.options[answer.correctAnswer]}</strong>
+                  </div>
+
+                  <p>${answer.explanation}</p>
+                </article>
+              `;
+            }).join("")}
+          </div>
+        ` : `
+          <div class="perfect-result">
+            <strong>Excellent work.</strong>
+            <span>You answered all 40 Mock Exam questions correctly.</span>
+          </div>
+        `}
+      </section>
+
+      <div class="result-actions">
+        <button class="button button-primary" id="new-mock" type="button">Take another Mock Exam</button>
+        <button class="button button-secondary" id="mock-dashboard" type="button">View Dashboard</button>
+      </div>
+
+      <p class="study-note">This is an original practice simulator and not the official SCRUMstudy examination.</p>
+    </section>
+  `;
+
+  document.querySelector("#new-mock").addEventListener("click", () => {
+    mockSession = null;
+    renderMockSetup();
+  });
+
+  document.querySelector("#mock-dashboard").addEventListener("click", () => {
+    mockSession = null;
+    changeView("dashboard");
+  });
+}
+
 function dashboardAverage(values) {
   if (!values.length) return null;
   return values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
@@ -1182,10 +1756,10 @@ function renderPersonalDashboard() {
     </div>
 
     <div class="dashboard-metric-grid">
-      <article><span>Average score</span><strong>${dashboardPercent(data.averageScore)}</strong><small>Completed Practice sessions</small></article>
+      <article><span>Average score</span><strong>${dashboardPercent(data.averageScore)}</strong><small>Completed scored sessions</small></article>
       <article><span>Best score</span><strong>${dashboardPercent(data.bestScore)}</strong><small>Personal best so far</small></article>
       <article><span>Attempts</span><strong>${data.attempts.length}</strong><small>Completed sessions</small></article>
-      <article><span>Practice answers</span><strong>${data.answers.length}</strong><small>Questions submitted</small></article>
+      <article><span >Scored answers</span><strong>${data.answers.length}</strong><small>Questions submitted</small></article>
     </div>
 
     <div class="dashboard-insight-grid">
