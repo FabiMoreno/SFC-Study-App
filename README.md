@@ -24,7 +24,7 @@ Netlify: https://sfc-study-app.netlify.app
 - profile data loaded from Supabase
 
 ### Study mode
-- 24 American English questions stored in Supabase
+- 120 original American English questions stored in Supabase
 - category filter and shuffle
 - answer feedback requested from a controlled database function
 - SBOK® references
@@ -47,6 +47,13 @@ Netlify: https://sfc-study-app.netlify.app
 - shared review opportunities only when both learners have enough data
 - explicit empty states instead of estimated or fabricated metrics
 
+### Question bank
+- 120 original questions aligned to SBOK® Fifth Edition chapters 1–12
+- 29 easy / 65 medium / 26 hard
+- answer positions balanced across A/B/C/D
+- separate coverage for Initiate, Plan & Estimate, Implement, Review & Retrospect, and Release
+- correct answers and explanations remain private in Supabase
+
 ## Security model
 
 - The browser uses a Supabase publishable key only.
@@ -58,7 +65,6 @@ Netlify: https://sfc-study-app.netlify.app
 
 ## Planned next steps
 
-- expand the bank toward 100–150 original questions
 - add Mock Exam with a dedicated non-revealable question pool
 - refine Dashboard insights as more real history accumulates
 - optionally add lightweight PIN/Auth later
