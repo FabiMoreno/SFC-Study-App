@@ -34,6 +34,7 @@ const workspace = document.querySelector("#workspace");
 const navLinks = document.querySelectorAll(".nav-link");
 const userOptions = document.querySelectorAll(".user-option");
 const modalNote = document.querySelector(".modal-note");
+const appHeader = document.querySelector(".app-header");
 
 let profiles = [];
 let QUESTION_BANK = [];
@@ -931,6 +932,45 @@ navLinks.forEach((button) => {
   button.addEventListener("click", () => changeView(button.dataset.view));
 });
 
+function initMobileNavigationScroll() {
+  const mobileQuery = window.matchMedia("(max-width: 640px)");
+  let lastScrollY = Math.max(window.scrollY, 0);
+  let ticking = false;
+
+  function updateNavigationVisibility() {
+    const currentScrollY = Math.max(window.scrollY, 0);
+
+    if (!mobileQuery.matches) {
+      appHeader.classList.remove("nav-collapsed");
+      lastScrollY = currentScrollY;
+      return;
+    }
+
+    if (currentScrollY <= 24) {
+      appHeader.classList.remove("nav-collapsed");
+    } else if (currentScrollY > lastScrollY + 3 && currentScrollY > 96) {
+      appHeader.classList.add("nav-collapsed");
+    } else if (currentScrollY < lastScrollY - 3) {
+      appHeader.classList.remove("nav-collapsed");
+    }
+
+    lastScrollY = currentScrollY;
+  }
+
+  window.addEventListener("scroll", () => {
+    if (ticking) return;
+
+    ticking = true;
+    window.requestAnimationFrame(() => {
+      updateNavigationVisibility();
+      ticking = false;
+    });
+  }, { passive: true });
+
+  mobileQuery.addEventListener?.("change", updateNavigationVisibility);
+  updateNavigationVisibility();
+}
+
 async function initializeApp() {
   openUserModal();
   renderLoading("Connecting to your study database…");
@@ -971,4 +1011,5 @@ async function initializeApp() {
   }
 }
 
+initMobileNavigationScroll();
 initializeApp();
