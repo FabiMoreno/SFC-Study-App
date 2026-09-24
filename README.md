@@ -24,18 +24,20 @@ A lightweight web app for Ayelén and Sam to prepare for the SCRUMstudy Scrum Fu
 - Netlify
 - GitHub
 
-## Initial structure
+## Current milestone
 
-```text
-index.html
-styles.css
-app.js
-supabase/
-assets/
-README.md
-```
+Study mode is now functional with a local question bank:
 
-## Data model planned for Supabase
+- 24 American English study questions
+- category filter
+- shuffle
+- answer reveal + explanation
+- SBOK® references
+- temporary per-user progress stored in localStorage
+
+The local bank is temporary. It will be migrated to Supabase once the Study and Practice interactions are validated.
+
+## Planned Supabase entities
 
 - profiles
 - topics

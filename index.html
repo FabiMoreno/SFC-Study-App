@@ -40,52 +40,16 @@
         <div>
           <span class="eyebrow">SFC™ STUDY LAB</span>
           <h1 id="view-title">Study smarter for your Scrum Fundamentals exam.</h1>
-          <p id="view-description">
-            Review concepts, practice exam-style questions, and build a clear picture of your progress.
-          </p>
+          <p id="view-description">Review concepts, practice exam-style questions, and build a clear picture of your progress.</p>
         </div>
         <div class="status-card">
           <span class="status-label">Current learner</span>
           <strong id="hero-user">Select a user</strong>
-          <span class="status-copy">Your activity will be saved to this profile once Supabase is connected.</span>
+          <span class="status-copy">Study progress is temporarily stored on this device. Supabase history comes next.</span>
         </div>
       </section>
 
-      <section class="workspace" id="workspace" aria-live="polite">
-        <div class="placeholder-card">
-          <span class="placeholder-icon">◎</span>
-          <div>
-            <span class="section-kicker">First milestone</span>
-            <h2>Study mode foundation</h2>
-            <p>
-              The application shell and learner selection are ready. Flashcards and the question bank will be added in the next development step.
-            </p>
-          </div>
-        </div>
-
-        <div class="feature-grid">
-          <article class="feature-card">
-            <span>01</span>
-            <h3>Study</h3>
-            <p>Interactive flashcards with immediate explanations and SBOK® references.</p>
-          </article>
-          <article class="feature-card">
-            <span>02</span>
-            <h3>Practice</h3>
-            <p>Short randomized sets with feedback and topic-level performance.</p>
-          </article>
-          <article class="feature-card">
-            <span>03</span>
-            <h3>Mock Exam</h3>
-            <p>40 questions, 60 minutes, and results revealed after submission.</p>
-          </article>
-          <article class="feature-card">
-            <span>04</span>
-            <h3>Dashboard</h3>
-            <p>Historical scores, weak areas, missed questions, and Ayelén vs Sam comparison.</p>
-          </article>
-        </div>
-      </section>
+      <section class="workspace" id="workspace" aria-live="polite"></section>
     </main>
   </div>
 
@@ -98,19 +62,13 @@
       <div class="user-options">
         <button class="user-option" type="button" data-user="Ayelén">
           <span class="profile-avatar">A</span>
-          <span>
-            <strong>Ayelén</strong>
-            <small>Continue study session</small>
-          </span>
+          <span><strong>Ayelén</strong><small>Continue study session</small></span>
           <span class="arrow" aria-hidden="true">→</span>
         </button>
 
         <button class="user-option" type="button" data-user="Sam">
           <span class="profile-avatar">S</span>
-          <span>
-            <strong>Sam</strong>
-            <small>Continue study session</small>
-          </span>
+          <span><strong>Sam</strong><small>Continue study session</small></span>
           <span class="arrow" aria-hidden="true">→</span>
         </button>
       </div>
@@ -119,6 +77,7 @@
     </div>
   </div>
 
+  <script src="questions.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
