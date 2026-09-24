@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SFC Study App for Scrum Fundamentals Certified exam preparation.">
+  <title>SFC Study App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="#" aria-label="SFC Study App home">
+        <span class="brand-mark">S</span>
+        <span>
+          <strong>SFC Study App</strong>
+          <small>Scrum Fundamentals Certified</small>
+        </span>
+      </a>
+
+      <nav class="main-nav" aria-label="Primary navigation">
+        <button class="nav-link active" data-view="study">Study</button>
+        <button class="nav-link" data-view="practice">Practice</button>
+        <button class="nav-link" data-view="mock">Mock Exam</button>
+        <button class="nav-link" data-view="dashboard">Dashboard</button>
+      </nav>
+
+      <button id="current-user" class="user-chip" type="button" aria-label="Switch user">
+        <span class="user-avatar" id="user-avatar">?</span>
+        <span id="user-name">Choose user</span>
+        <span aria-hidden="true">⌄</span>
+      </button>
+    </header>
+
+    <main class="main-content">
+      <section class="hero">
+        <div>
+          <span class="eyebrow">SFC™ STUDY LAB</span>
+          <h1 id="view-title">Study smarter for your Scrum Fundamentals exam.</h1>
+          <p id="view-description">Review concepts, practice exam-style questions, and build a clear picture of your progress.</p>
+        </div>
+        <div class="status-card">
+          <span class="status-label">Current learner</span>
+          <strong id="hero-user">Select a user</strong>
+          <span class="status-copy">Study progress is temporarily stored on this device. Supabase history comes next.</span>
+        </div>
+      </section>
+
+      <section class="workspace" id="workspace" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="user-modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+    <div class="user-modal-card">
+      <span class="eyebrow">WELCOME BACK</span>
+      <h2 id="user-modal-title">Who's studying today?</h2>
+      <p>Select a learner before starting. You can switch profiles at any time.</p>
+
+      <div class="user-options">
+        <button class="user-option" type="button" data-user="Ayelén">
+          <span class="profile-avatar">A</span>
+          <span><strong>Ayelén</strong><small>Continue study session</small></span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </button>
+
+        <button class="user-option" type="button" data-user="Sam">
+          <span class="profile-avatar">S</span>
+          <span><strong>Sam</strong><small>Continue study session</small></span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <p class="modal-note">No password is required for the MVP.</p>
+    </div>
+  </div>
+
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
