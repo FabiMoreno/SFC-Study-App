@@ -2,40 +2,47 @@
 
 A lightweight web app for Ayelén and Sam to prepare for the SCRUMstudy Scrum Fundamentals Certified (SFC™) exam.
 
-## MVP
-
-- User selector: Ayelén / Sam
-- Current user always visible
-- Study flashcards
-- Practice mode
-- 40-question mock exam
-- Historical scores per user
-- Topic/subtopic performance
-- Most-missed questions
-- Ayelén vs Sam comparison
-- Supabase-backed question bank and attempt history
-
 ## Stack
 
 - HTML
 - CSS
 - Vanilla JavaScript
-- Supabase
+- Supabase (planned persistence)
 - Netlify
 - GitHub
 
-## Current milestone
+## Current functionality
 
-Study mode is now functional with a local question bank:
+### Learner selection
+- Ayelén / Sam profile picker
+- selected learner always visible
+- switch user at any time
 
-- 24 American English study questions
+### Study mode
+- 24 American English questions
 - category filter
 - shuffle
 - answer reveal + explanation
 - SBOK® references
-- temporary per-user progress stored in localStorage
+- temporary per-user progress in localStorage
 
-The local bank is temporary. It will be migrated to Supabase once the Study and Practice interactions are validated.
+### Practice mode
+- 10- or 20-question randomized sessions
+- no answer feedback until submission
+- previous / next navigation
+- answered-question navigator
+- final percentage and correct/incorrect totals
+- performance breakdown by category
+- detailed review of missed questions
+- recent practice history saved locally per learner
+
+## Planned next steps
+
+- move profiles, questions, attempts, and answers to Supabase
+- expand question bank to 100–150 questions
+- add 40-question / 60-minute Mock Exam
+- build personal and comparison Dashboard
+- connect Netlify to this repository for automatic deploys from `main`
 
 ## Planned Supabase entities
 
@@ -44,9 +51,5 @@ The local bank is temporary. It will be migrated to Supabase once the Study and 
 - questions
 - exam_attempts
 - attempt_answers
-
-## Deployment
-
-The app will be deployed as a static site on Netlify and connected to this GitHub repository for automatic deploys from `main`.
 
 No production credentials or private keys should be committed to this repository.
